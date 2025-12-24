@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WhatsApp Cloud API Dashboard</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📱 WhatsApp Cloud API Dashboard</h1>
+            <p class="subtitle">Message Receiver & Sender</p>
+        </header>
+
+        <!-- Settings Section -->
+        <section class="card settings-card">
+            <h2>⚙️ Settings & Configuration</h2>
+            <div class="settings-grid">
+                <div class="setting-item">
+                    <label>Webhook URL</label>
+                    <div class="value-container">
+                        <input type="text" id="webhook-url" readonly>
+                        <button onclick="copyToClipboard('webhook-url')" class="copy-btn">📋 Copy</button>
+                    </div>
+                    <p class="hint">Use this URL in your Meta App webhook configuration</p>
+                </div>
+
+                <div class="setting-item">
+                    <label>Verify Token</label>
+                    <div class="value-container">
+                        <input type="text" id="verify-token" readonly>
+                        <button onclick="copyToClipboard('verify-token')" class="copy-btn">📋 Copy</button>
+                    </div>
+                    <p class="hint">Use this token when setting up the webhook</p>
+                </div>
+
+                <div class="setting-item">
+                    <label>Phone Number ID</label>
+                    <div class="value-container">
+                        <input type="text" id="phone-number-id" readonly>
+                        <button onclick="copyToClipboard('phone-number-id')" class="copy-btn">📋 Copy</button>
+                    </div>
+                    <p class="hint">Your WhatsApp Business Phone Number ID</p>
+                </div>
+
+                <div class="setting-item">
+                    <label>Access Token</label>
+                    <div class="value-container">
+                        <input type="text" id="access-token" readonly>
+                        <button onclick="copyToClipboard('access-token')" class="copy-btn">📋 Copy</button>
+                    </div>
+                    <p class="hint">Your WhatsApp Business Account Access Token (partial view)</p>
+                </div>
+
+                <div class="setting-item">
+                    <label>WhatsApp Business Account ID</label>
+                    <div class="value-container">
+                        <input type="text" id="waba-id" readonly>
+                        <button onclick="copyToClipboard('waba-id')" class="copy-btn">📋 Copy</button>
+                    </div>
+                    <p class="hint">Your WhatsApp Business Account ID</p>
+                </div>
+            </div>
+        </section>
+
+        <!-- Send Message Section -->
+        <section class="card send-card">
+            <h2>📤 Send Message</h2>
+            <div class="send-form">
+                <div class="form-group">
+                    <label for="recipient">Recipient Phone Number</label>
+                    <input type="text" id="recipient" placeholder="e.g., 919876543210" />
+                    <p class="hint">Include country code without + (e.g., 919876543210 for India)</p>
+                </div>
+                <div class="form-group">
+                    <label for="message-text">Message</label>
+                    <textarea id="message-text" rows="4" placeholder="Enter your message here..."></textarea>
+                </div>
+                <button onclick="sendMessage()" class="send-btn">Send Message ✈️</button>
+                <div id="send-status" class="status-message"></div>
+            </div>
+        </section>
+
+        <!-- Received Messages Section -->
+        <section class="card messages-card">
+            <div class="messages-header">
+                <h2>📨 Received Messages</h2>
+                <button onclick="refreshMessages()" class="refresh-btn">🔄 Refresh</button>
+            </div>
+            <div id="messages-container" class="messages-list">
+                <p class="no-messages">No messages received yet...</p>
+            </div>
+        </section>
+    </div>
+
+    <script>
+        // Load settings on page load
+        async function loadSettings() {
+            try {
+                const response = await fetch('/api/settings');
+                const settings = await response.json();
+                
+                document.getElementById('webhook-url').value = settings.webhook_url;
+                document.getElementById('verify-token').value = settings.verify_token;
+                document.getElementById('phone-number-id').value = settings.phone_number_id;
+                document.getElementById('access-token').value = settings.access_token;
+                document.getElementById('waba-id').value = settings.whatsapp_business_account_id;
+            } catch (error) {
+                console.error('Error loading settings:', error);
+            }
+        }
+
+        // Copy to clipboard
+        function copyToClipboard(elementId) {
+            const input = document.getElementById(elementId);
+            input.select();
+            document.execCommand('copy');
+            
+            const btn = input.nextElementSibling;
+            const originalText = btn.textContent;
+            btn.textContent = '✅ Copied!';
+            btn.style.background = 'linear-gradient(135deg, #10b981 0%, #059669 100%)';
+            
+            setTimeout(() => {
+                btn.textContent = originalText;
+                btn.style.background = '';
+            }, 2000);
+        }
+
+        // Send message
+        async function sendMessage() {
+            const to = document.getElementById('recipient').value.trim();
+            const message = document.getElementById('message-text').value.trim();
+            const statusDiv = document.getElementById('send-status');
+
+            if (!to || !message) {
+                statusDiv.innerHTML = '<span class="error">❌ Please fill in both fields</span>';
+                return;
+            }
+
+            statusDiv.innerHTML = '<span class="loading">⏳ Sending...</span>';
+
+            try {
+                const response = await fetch('/api/send-message', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ to, message })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    statusDiv.innerHTML = '<span class="success">✅ Message sent successfully!</span>';
+                    document.getElementById('message-text').value = '';
+                } else {
+                    statusDiv.innerHTML = `<span class="error">❌ Error: ${result.error}</span>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="error">❌ Error: ${error.message}</span>`;
+            }
+        }
+
+        // Load received messages
+        async function loadMessages() {
+            try {
+                const response = await fetch('/api/messages');
+                const data = await response.json();
+                const container = document.getElementById('messages-container');
+
+                if (data.messages.length === 0) {
+                    container.innerHTML = '<p class="no-messages">No messages received yet...</p>';
+                } else {
+                    container.innerHTML = data.messages.map(msg => `
+                        <div class="message-item">
+                            <div class="message-header">
+                                <span class="message-from">📞 ${msg.from}</span>
+                                <span class="message-time">${msg.timestamp}</span>
+                            </div>
+                            <div class="message-text">${escapeHtml(msg.text)}</div>
+                        </div>
+                    `).join('');
+                }
+            } catch (error) {
+                console.error('Error loading messages:', error);
+            }
+        }
+
+        // Refresh messages
+        function refreshMessages() {
+            loadMessages();
+        }
+
+        // Escape HTML to prevent XSS
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Auto-refresh messages every 5 seconds
+        setInterval(loadMessages, 5000);
+
+        // Load data on page load
+        loadSettings();
+        loadMessages();
+    </script>
+</body>
+</html>

@@ -9,30 +9,44 @@ const PORT = process.env.PORT || 3000;
 
 // Middleware
 app.use(bodyParser.json());
-app.use(express.static('public'));
+app.use(bodyParser.urlencoded({ extended: true }));
 
-// Store received messages in memory (for demo purposes)
+// Store received messages in memory (for production, use a database)
 let receivedMessages = [];
 
-// WhatsApp API Configuration
-const WHATSAPP_API_URL = `https://graph.facebook.com/v18.0/${process.env.PHONE_NUMBER_ID}/messages`;
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN || 'your_verify_token';
-const ACCESS_TOKEN = process.env.ACCESS_TOKEN;
+// Environment variables
+const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
+const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
+const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
 
-// Webhook verification (GET)
+// Validate required environment variables
+const requiredEnvVars = ['VERIFY_TOKEN', 'WHATSAPP_TOKEN', 'PHONE_NUMBER_ID'];
+const missingVars = requiredEnvVars.filter(varName => !process.env[varName]);
+
+if (missingVars.length > 0) {
+    console.error('❌ Missing required environment variables:', missingVars.join(', '));
+    console.error('⚠️  Server starting but WhatsApp functionality will be limited');
+}
+
+// Serve dashboard at root "/"
+app.get('/', (req, res) => {
+    res.sendFile(path.join(__dirname, 'index.html'));
+});
+
+// Webhook verification endpoint (GET) - Meta requirement
 app.get('/webhook', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    if (mode && token) {
-        if (mode === 'subscribe' && token === VERIFY_TOKEN) {
-            console.log('✅ Webhook verified successfully!');
-            res.status(200).send(challenge);
-        } else {
-            console.log('❌ Webhook verification failed!');
-            res.sendStatus(403);
-        }
+    console.log('🔍 Webhook verification attempt:', { mode, token: token ? '***' : 'missing' });
+
+    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+        console.log('✅ Webhook verified successfully!');
+        return res.status(200).send(challenge);
+    } else {
+        console.error('❌ Webhook verification failed - token mismatch');
+        return res.sendStatus(403);
     }
 });
 
@@ -40,31 +54,91 @@ app.get('/webhook', (req, res) => {
 app.post('/webhook', (req, res) => {
     const body = req.body;
 
-    if (body.object) {
-        if (body.entry && body.entry[0].changes && body.entry[0].changes[0].value.messages) {
-            const message = body.entry[0].changes[0].value.messages[0];
-            const from = message.from;
-            const messageText = message.text ? message.text.body : 'Media/Other';
-            const timestamp = new Date(message.timestamp * 1000).toLocaleString();
+    console.log('📩 Webhook POST received');
 
-            const messageData = {
-                from,
-                text: messageText,
-                timestamp,
-                raw: message
-            };
+    // Webhook validation
+    if (body.object !== 'whatsapp_business_account') {
+        console.log('⚠️  Not a WhatsApp business account webhook');
+        return res.sendStatus(404);
+    }
 
-            receivedMessages.unshift(messageData); // Add to beginning of array
-            console.log(`📨 Message received from ${from}: ${messageText}`);
+    // Process webhook entry
+    try {
+        body.entry?.forEach(entry => {
+            entry.changes?.forEach(change => {
+                const value = change.value;
 
-            // Keep only last 50 messages
-            if (receivedMessages.length > 50) {
-                receivedMessages = receivedMessages.slice(0, 50);
-            }
-        }
-        res.status(200).send('EVENT_RECEIVED');
-    } else {
-        res.sendStatus(404);
+                // Handle incoming messages
+                if (value.messages && value.messages.length > 0) {
+                    value.messages.forEach(message => {
+                        const from = message.from;
+                        const messageId = message.id;
+                        const messageType = message.type;
+                        const timestamp = new Date(parseInt(message.timestamp) * 1000).toLocaleString();
+
+                        let messageText = '';
+
+                        // Extract message based on type
+                        switch (messageType) {
+                            case 'text':
+                                messageText = message.text.body;
+                                break;
+                            case 'image':
+                                messageText = '[Image]';
+                                break;
+                            case 'video':
+                                messageText = '[Video]';
+                                break;
+                            case 'audio':
+                                messageText = '[Audio]';
+                                break;
+                            case 'document':
+                                messageText = '[Document]';
+                                break;
+                            default:
+                                messageText = `[${messageType}]`;
+                        }
+
+                        // Store message
+                        const messageData = {
+                            id: messageId,
+                            from,
+                            text: messageText,
+                            type: messageType,
+                            timestamp,
+                            raw: message
+                        };
+
+                        receivedMessages.unshift(messageData);
+
+                        // Keep only last 100 messages
+                        if (receivedMessages.length > 100) {
+                            receivedMessages = receivedMessages.slice(0, 100);
+                        }
+
+                        // Log received message
+                        console.log('📨 WhatsApp Message Received:');
+                        console.log(`   From: ${from}`);
+                        console.log(`   Type: ${messageType}`);
+                        console.log(`   Message: ${messageText}`);
+                        console.log(`   Time: ${timestamp}`);
+                        console.log('---');
+                    });
+                }
+
+                // Handle message status updates (optional)
+                if (value.statuses && value.statuses.length > 0) {
+                    value.statuses.forEach(status => {
+                        console.log(`📊 Message Status: ${status.status} for ${status.id}`);
+                    });
+                }
+            });
+        });
+
+        res.sendStatus(200);
+    } catch (error) {
+        console.error('❌ Error processing webhook:', error.message);
+        res.sendStatus(500);
     }
 });
 
@@ -72,23 +146,26 @@ app.post('/webhook', (req, res) => {
 app.post('/api/send-message', async (req, res) => {
     const { to, message } = req.body;
 
+    // Validation
     if (!to || !message) {
-        return res.status(400).json({ 
-            success: false, 
-            error: 'Missing required fields: to and message' 
+        return res.status(400).json({
+            success: false,
+            error: 'Missing required fields: "to" and "message"'
         });
     }
 
-    if (!ACCESS_TOKEN || !process.env.PHONE_NUMBER_ID) {
-        return res.status(500).json({ 
-            success: false, 
-            error: 'WhatsApp API not configured. Please set ACCESS_TOKEN and PHONE_NUMBER_ID in environment variables.' 
+    if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
+        return res.status(500).json({
+            success: false,
+            error: 'Server not configured. Missing WHATSAPP_TOKEN or PHONE_NUMBER_ID'
         });
     }
 
     try {
+        const url = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
+
         const response = await axios.post(
-            WHATSAPP_API_URL,
+            url,
             {
                 messaging_product: 'whatsapp',
                 to: to,
@@ -97,60 +174,91 @@ app.post('/api/send-message', async (req, res) => {
             },
             {
                 headers: {
-                    'Authorization': `Bearer ${ACCESS_TOKEN}`,
+                    'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
                     'Content-Type': 'application/json'
                 }
             }
         );
 
-        console.log(`✅ Message sent to ${to}`);
-        res.json({ 
-            success: true, 
+        console.log(`✅ Message sent successfully to ${to}`);
+
+        res.json({
+            success: true,
             messageId: response.data.messages[0].id,
-            data: response.data 
+            data: response.data
         });
     } catch (error) {
-        console.error('❌ Error sending message:', error.response?.data || error.message);
-        res.status(500).json({ 
-            success: false, 
-            error: error.response?.data || error.message 
+        const errorMessage = error.response?.data?.error?.message || error.message;
+        console.error('❌ Failed to send message:', errorMessage);
+
+        res.status(500).json({
+            success: false,
+            error: errorMessage,
+            details: error.response?.data
         });
     }
 });
 
-// API endpoint to get configuration settings
+// API endpoint to get configuration
 app.get('/api/settings', (req, res) => {
-    const webhookUrl = process.env.WEBHOOK_URL || `${req.protocol}://${req.get('host')}/webhook`;
-    
+    const host = req.get('host');
+    const protocol = req.get('x-forwarded-proto') || req.protocol;
+    const webhookUrl = `${protocol}://${host}/webhook`;
+
     res.json({
         webhook_url: webhookUrl,
-        verify_token: VERIFY_TOKEN,
-        phone_number_id: process.env.PHONE_NUMBER_ID || 'Not configured',
-        access_token: ACCESS_TOKEN ? `${ACCESS_TOKEN.substring(0, 20)}...` : 'Not configured',
-        whatsapp_business_account_id: process.env.WABA_ID || 'Not configured'
+        verify_token: VERIFY_TOKEN || 'Not configured',
+        phone_number_id: PHONE_NUMBER_ID || 'Not configured',
+        whatsapp_token: WHATSAPP_TOKEN ? `${WHATSAPP_TOKEN.substring(0, 20)}...` : 'Not configured',
+        server_status: 'Running',
+        port: PORT
     });
 });
 
 // API endpoint to get received messages
 app.get('/api/messages', (req, res) => {
-    res.json({ messages: receivedMessages });
+    res.json({
+        success: true,
+        count: receivedMessages.length,
+        messages: receivedMessages
+    });
 });
 
 // Health check endpoint
 app.get('/health', (req, res) => {
-    res.json({ status: 'OK', timestamp: new Date().toISOString() });
+    res.json({
+        status: 'OK',
+        timestamp: new Date().toISOString(),
+        uptime: process.uptime()
+    });
+});
+
+// 404 handler
+app.use((req, res) => {
+    res.status(404).json({ error: 'Not found' });
 });
 
 // Start server
 app.listen(PORT, () => {
-    console.log('🚀 WhatsApp Cloud API Server Started!');
-    console.log(`📡 Server running on port ${PORT}`);
-    console.log(`🌐 Dashboard: http://localhost:${PORT}`);
-    console.log(`🔗 Webhook URL: http://localhost:${PORT}/webhook`);
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log('🚀 WhatsApp Cloud API Server - Production Ready');
+    console.log('═══════════════════════════════════════════════════════════');
+    console.log(`📡 Server running on port: ${PORT}`);
+    console.log(`🌐 Dashboard: Access at root path "/")`);
+    console.log(`🔗 Webhook endpoint: /webhook`);
     console.log('');
-    console.log('⚙️  Configuration:');
-    console.log(`   - Verify Token: ${VERIFY_TOKEN}`);
-    console.log(`   - Phone Number ID: ${process.env.PHONE_NUMBER_ID || 'Not configured'}`);
-    console.log(`   - Access Token: ${ACCESS_TOKEN ? 'Configured ✅' : 'Not configured ❌'}`);
+    console.log('⚙️  Configuration Status:');
+    console.log(`   ├─ Verify Token: ${VERIFY_TOKEN ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   ├─ WhatsApp Token: ${WHATSAPP_TOKEN ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   └─ Phone Number ID: ${PHONE_NUMBER_ID ? '✅ Set' : '❌ Missing'}`);
     console.log('');
+    console.log('📝 API Endpoints:');
+    console.log('   GET  / - Dashboard');
+    console.log('   GET  /webhook - Webhook verification');
+    console.log('   POST /webhook - Receive messages');
+    console.log('   POST /api/send-message - Send messages');
+    console.log('   GET  /api/settings - Get configuration');
+    console.log('   GET  /api/messages - Get received messages');
+    console.log('   GET  /health - Health check');
+    console.log('═══════════════════════════════════════════════════════════');
 });

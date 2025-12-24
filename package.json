@@ -1,20 +1,21 @@
 {
-  "name": "whatsapp-cloud-api",
+  "name": "whatsapp-cloud-api-server",
   "version": "1.0.0",
-  "description": "WhatsApp Cloud API message receiver and sender with settings dashboard",
+  "description": "Production-ready WhatsApp Cloud API server with webhook handling and dashboard",
   "main": "server.js",
   "scripts": {
-    "start": "node server.js",
-    "dev": "node server.js"
+    "start": "node server.js"
   },
   "keywords": [
     "whatsapp",
-    "cloud-api",
+    "whatsapp-cloud-api",
     "webhook",
-    "messaging"
+    "meta",
+    "messaging",
+    "render"
   ],
   "author": "",
-  "license": "ISC",
+  "license": "MIT",
   "dependencies": {
     "express": "^4.18.2",
     "axios": "^1.6.2",
@@ -22,6 +23,7 @@
     "body-parser": "^1.20.2"
   },
   "engines": {
-    "node": ">=16.0.0"
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
   }
 }

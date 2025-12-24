@@ -199,6 +199,13 @@ app.post('/api/send-message', async (req, res) => {
     }
 });
 
+// Helper to mask sensitive data
+const maskData = (str) => {
+    if (!str || str === 'Not configured') return 'Not configured';
+    if (str.length < 10) return '****' + str.substring(str.length - 2);
+    return `${str.substring(0, 5)}••••••••••${str.substring(str.length - 4)}`;
+};
+
 // API endpoint to get configuration
 app.get('/api/settings', (req, res) => {
     const host = req.get('host');
@@ -207,9 +214,9 @@ app.get('/api/settings', (req, res) => {
 
     res.json({
         webhook_url: webhookUrl,
-        verify_token: VERIFY_TOKEN || 'Not configured',
-        phone_number_id: PHONE_NUMBER_ID || 'Not configured',
-        whatsapp_token: WHATSAPP_TOKEN ? `${WHATSAPP_TOKEN.substring(0, 20)}...` : 'Not configured',
+        verify_token: maskData(VERIFY_TOKEN),
+        phone_number_id: maskData(PHONE_NUMBER_ID),
+        whatsapp_token: maskData(WHATSAPP_TOKEN),
         server_status: 'Running',
         port: PORT
     });

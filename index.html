@@ -82,6 +82,7 @@
         }
 
         input[type="text"],
+        input[type="password"],
         textarea {
             flex: 1;
             padding: 12px;
@@ -93,6 +94,7 @@
         }
 
         input[type="text"]:focus,
+        input[type="password"]:focus,
         textarea:focus {
             outline: none;
             border-color: #667eea;
@@ -124,6 +126,53 @@
             background: #5568d3;
             transform: translateY(-2px);
             box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .edit-btn {
+            background: #f3f4f6;
+            color: #374151;
+            border: 1px solid #d1d5db;
+        }
+
+        .edit-btn:hover {
+            background: #e5e7eb;
+        }
+
+        .save-btn {
+            background: #10b981;
+            color: white;
+        }
+
+        .save-btn:hover {
+            background: #059669;
+        }
+
+        .cancel-btn {
+            background: #ef4444;
+            color: white;
+            padding: 12px 15px;
+        }
+
+        .cancel-btn:hover {
+            background: #dc2626;
+        }
+
+        .edit-container {
+            display: flex;
+            margin-top: 5px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+                transform: translateY(-5px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
         }
 
         .send-btn {
@@ -286,33 +335,64 @@
                     <p class="hint">Use this URL in Meta App webhook configuration</p>
                 </div>
 
+                <!-- Verify Token -->
                 <div class="setting-item">
                     <label>Verify Token <span
                             style="font-size: 0.8em; color: #10b981; margin-left: 5px;">(Masked)</span></label>
-                    <div class="value-container">
+                    <div class="value-container" id="container-verify-token">
                         <input type="text" id="verify-token" readonly style="color: #667eea; font-weight: bold;">
+                        <button onclick="enableEdit('verify-token')" class="edit-btn">✏️ Edit</button>
+                    </div>
+                    <!-- Edit Mode (Hidden by default) -->
+                    <div class="edit-container" id="edit-verify-token" style="display: none; gap: 10px;">
+                        <input type="password" id="input-verify-token" placeholder="Enter new Verify Token..."
+                            style="flex:1;">
+                        <button onclick="saveSetting('verify_token', 'input-verify-token')" class="save-btn">💾
+                            Save</button>
+                        <button onclick="cancelEdit('verify-token')" class="cancel-btn">❌</button>
                     </div>
                     <p class="hint">Value hidden for security</p>
                 </div>
 
+                <!-- Phone Number ID -->
                 <div class="setting-item">
                     <label>Phone Number ID <span
                             style="font-size: 0.8em; color: #10b981; margin-left: 5px;">(Masked)</span></label>
-                    <div class="value-container">
+                    <div class="value-container" id="container-phone-number-id">
                         <input type="text" id="phone-number-id" readonly style="color: #667eea; font-weight: bold;">
+                        <button onclick="enableEdit('phone-number-id')" class="edit-btn">✏️ Edit</button>
+                    </div>
+                    <!-- Edit Mode -->
+                    <div class="edit-container" id="edit-phone-number-id" style="display: none; gap: 10px;">
+                        <input type="password" id="input-phone-number-id" placeholder="Enter new Phone Number ID..."
+                            style="flex:1;">
+                        <button onclick="saveSetting('phone_number_id', 'input-phone-number-id')" class="save-btn">💾
+                            Save</button>
+                        <button onclick="cancelEdit('phone-number-id')" class="cancel-btn">❌</button>
                     </div>
                     <p class="hint">Value hidden for security</p>
                 </div>
 
+                <!-- WhatsApp Token -->
                 <div class="setting-item">
                     <label>WhatsApp Token <span
                             style="font-size: 0.8em; color: #10b981; margin-left: 5px;">(Masked)</span></label>
-                    <div class="value-container">
+                    <div class="value-container" id="container-whatsapp-token">
                         <input type="text" id="whatsapp-token" readonly style="color: #667eea; font-weight: bold;">
+                        <button onclick="enableEdit('whatsapp-token')" class="edit-btn">✏️ Edit</button>
+                    </div>
+                    <!-- Edit Mode -->
+                    <div class="edit-container" id="edit-whatsapp-token" style="display: none; gap: 10px;">
+                        <input type="password" id="input-whatsapp-token" placeholder="Enter new WhatsApp Token..."
+                            style="flex:1;">
+                        <button onclick="saveSetting('whatsapp_token', 'input-whatsapp-token')" class="save-btn">💾
+                            Save</button>
+                        <button onclick="cancelEdit('whatsapp-token')" class="cancel-btn">❌</button>
                     </div>
                     <p class="hint">Value hidden for security</p>
                 </div>
             </div>
+            <div id="settings-status" class="status-message" style="display: none;"></div>
         </section>
 
         <!-- Send Message Section -->
@@ -356,6 +436,56 @@
                 document.getElementById('whatsapp-token').value = settings.whatsapp_token;
             } catch (error) {
                 console.error('Error loading settings:', error);
+            }
+        }
+
+        // Enable edit mode
+        function enableEdit(fieldId) {
+            document.getElementById(`container-${fieldId}`).style.display = 'none';
+            document.getElementById(`edit-${fieldId}`).style.display = 'flex';
+            document.getElementById(`input-${fieldId}`).focus();
+        }
+
+        // Cancel edit mode
+        function cancelEdit(fieldId) {
+            document.getElementById(`container-${fieldId}`).style.display = 'flex';
+            document.getElementById(`edit-${fieldId}`).style.display = 'none';
+            document.getElementById(`input-${fieldId}`).value = ''; // Clear input
+        }
+
+        // Save setting
+        async function saveSetting(key, inputId) {
+            const value = document.getElementById(inputId).value.trim();
+            const fieldId = inputId.replace('input-', '');
+            const statusDiv = document.getElementById('settings-status');
+
+            if (!value) {
+                alert('Please enter a value');
+                return;
+            }
+
+            statusDiv.style.display = 'block';
+            statusDiv.innerHTML = '<span class="loading">⏳ Saving...</span>';
+
+            try {
+                const response = await fetch('/api/settings', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ [key]: value })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    statusDiv.innerHTML = '<span class="success">✅ Saved successfully!</span>';
+                    cancelEdit(fieldId);
+                    loadSettings(); // Reload masked values
+                    setTimeout(() => statusDiv.style.display = 'none', 3000);
+                } else {
+                    statusDiv.innerHTML = `<span class="error">❌ Error: ${result.error}</span>`;
+                }
+            } catch (error) {
+                statusDiv.innerHTML = `<span class="error">❌ Server error: ${error.message}</span>`;
             }
         }
 

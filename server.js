@@ -14,10 +14,12 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Store received messages in memory (for production, use a database)
 let receivedMessages = [];
 
-// Environment variables
-const VERIFY_TOKEN = process.env.VERIFY_TOKEN;
-const WHATSAPP_TOKEN = process.env.WHATSAPP_TOKEN;
-const PHONE_NUMBER_ID = process.env.PHONE_NUMBER_ID;
+// Configuration Object (Mutable)
+let config = {
+    VERIFY_TOKEN: process.env.VERIFY_TOKEN,
+    WHATSAPP_TOKEN: process.env.WHATSAPP_TOKEN,
+    PHONE_NUMBER_ID: process.env.PHONE_NUMBER_ID
+};
 
 // Validate required environment variables
 const requiredEnvVars = ['VERIFY_TOKEN', 'WHATSAPP_TOKEN', 'PHONE_NUMBER_ID'];
@@ -41,7 +43,7 @@ app.get('/webhook', (req, res) => {
 
     console.log('🔍 Webhook verification attempt:', { mode, token: token ? '***' : 'missing' });
 
-    if (mode === 'subscribe' && token === VERIFY_TOKEN) {
+    if (mode === 'subscribe' && token === config.VERIFY_TOKEN) {
         console.log('✅ Webhook verified successfully!');
         return res.status(200).send(challenge);
     } else {
@@ -154,7 +156,7 @@ app.post('/api/send-message', async (req, res) => {
         });
     }
 
-    if (!WHATSAPP_TOKEN || !PHONE_NUMBER_ID) {
+    if (!config.WHATSAPP_TOKEN || !config.PHONE_NUMBER_ID) {
         return res.status(500).json({
             success: false,
             error: 'Server not configured. Missing WHATSAPP_TOKEN or PHONE_NUMBER_ID'
@@ -162,7 +164,7 @@ app.post('/api/send-message', async (req, res) => {
     }
 
     try {
-        const url = `https://graph.facebook.com/v18.0/${PHONE_NUMBER_ID}/messages`;
+        const url = `https://graph.facebook.com/v18.0/${config.PHONE_NUMBER_ID}/messages`;
 
         const response = await axios.post(
             url,
@@ -174,7 +176,7 @@ app.post('/api/send-message', async (req, res) => {
             },
             {
                 headers: {
-                    'Authorization': `Bearer ${WHATSAPP_TOKEN}`,
+                    'Authorization': `Bearer ${config.WHATSAPP_TOKEN}`,
                     'Content-Type': 'application/json'
                 }
             }
@@ -214,11 +216,27 @@ app.get('/api/settings', (req, res) => {
 
     res.json({
         webhook_url: webhookUrl,
-        verify_token: maskData(VERIFY_TOKEN),
-        phone_number_id: maskData(PHONE_NUMBER_ID),
-        whatsapp_token: maskData(WHATSAPP_TOKEN),
+        verify_token: maskData(config.VERIFY_TOKEN),
+        phone_number_id: maskData(config.PHONE_NUMBER_ID),
+        whatsapp_token: maskData(config.WHATSAPP_TOKEN),
         server_status: 'Running',
         port: PORT
+    });
+});
+
+// API endpoint to update configuration
+app.post('/api/settings', (req, res) => {
+    const { verify_token, phone_number_id, whatsapp_token } = req.body;
+
+    if (verify_token) config.VERIFY_TOKEN = verify_token;
+    if (phone_number_id) config.PHONE_NUMBER_ID = phone_number_id;
+    if (whatsapp_token) config.WHATSAPP_TOKEN = whatsapp_token;
+
+    console.log('⚙️  Configuration updated via API');
+
+    res.json({
+        success: true,
+        message: 'Configuration updated successfully (Runtime only)'
     });
 });
 
@@ -255,9 +273,9 @@ app.listen(PORT, () => {
     console.log(`🔗 Webhook endpoint: /webhook`);
     console.log('');
     console.log('⚙️  Configuration Status:');
-    console.log(`   ├─ Verify Token: ${VERIFY_TOKEN ? '✅ Set' : '❌ Missing'}`);
-    console.log(`   ├─ WhatsApp Token: ${WHATSAPP_TOKEN ? '✅ Set' : '❌ Missing'}`);
-    console.log(`   └─ Phone Number ID: ${PHONE_NUMBER_ID ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   ├─ Verify Token: ${config.VERIFY_TOKEN ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   ├─ WhatsApp Token: ${config.WHATSAPP_TOKEN ? '✅ Set' : '❌ Missing'}`);
+    console.log(`   └─ Phone Number ID: ${config.PHONE_NUMBER_ID ? '✅ Set' : '❌ Missing'}`);
     console.log('');
     console.log('📝 API Endpoints:');
     console.log('   GET  / - Dashboard');
